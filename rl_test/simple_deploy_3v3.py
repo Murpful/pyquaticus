@@ -50,29 +50,36 @@ import pyquaticus.utils.rewards as rew
 
 RENDER_MODE = 'human'
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Deploy a trained policy in a 2v2 PyQuaticus environment')
-    parser.add_argument('policy_one', help='Please enter the path to the model you would like to load in Ex. ./ray_test/checkpoint_00001/policies/agent-0-policy')
-    parser.add_argument('policy_two', help='Please enter the path to the model you would like to load in Ex. ./ray_test/checkpoint_00001/policies/agent-1-policy') 
-
-    reward_config = {'agent_0':rew.example_reward, 'agent_1':rew.example_reward}
+    parser = argparse.ArgumentParser(description='Deploy a trained policy in a 3v3 PyQuaticus environment')
+    reward_config = {'agent_0':rew.example_reward, 'agent_1':rew.example_reward, 'agent_2':rew.example_reward}
     args = parser.parse_args()
     config_dict = config_dict_std
-    config_dict['sim_speedup_factor'] = 8
-    config_dict['max_score'] = 100
-    config_dict['max_time']=360
-    config_dict['tagging_cooldown'] = 55
+    config_dict['sim_speedup_factor'] = 4
+    config_dict['max_score'] = 3
+    config_dict['max_time']=240
+    config_dict['tagging_cooldown'] = 60
     config_dict['tag_on_oob']=True
 
+
     #Create Environment
-    env = pyquaticus_v0.PyQuaticusEnv(config_dict=config_dict,render_mode='human',reward_config=reward_config, team_size=2)
-
-    obs,_ = env.reset()
-
-    H_one = BaseDefender('agent_0', Team.RED_TEAM, mode='easy')
-    H_two = BaseAttacker('agent_1', Team.RED_TEAM, mode='easy')
+    env = pyquaticus_v0.PyQuaticusEnv(config_dict=config_dict,render_mode='human',reward_config=reward_config, team_size=3)
     
-    policy_one = Policy.from_checkpoint(os.path.abspath(args.policy_one))
-    policy_two = Policy.from_checkpoint(os.path.abspath(args.policy_two))
+    obs,info = env.reset(return_info=True)
+    
+    #Ex. Load in Heurisitc
+    Attack0 = BaseAttacker('agent_0', Team.RED_TEAM, env, mode='easy')
+    Deffend0 = BaseDefender('agent_0', Team.RED_TEAM, env, mode='easy')
+    Attack1 = BaseAttacker('agent_1', Team.RED_TEAM, env, mode='easy')
+    Deffend1 = BaseDefender('agent_1', Team.RED_TEAM, env, mode='easy')
+    Attack2 = BaseAttacker('agent_2', Team.RED_TEAM, env, mode='easy')
+    Deffend2 = BaseDefender('agent_2', Team.RED_TEAM, env, mode='easy')
+    Attack3 = BaseAttacker('agent_3', Team.BLUE_TEAM, env, mode='easy')
+    Deffend3 = BaseDefender('agent_3', Team.BLUE_TEAM, env, mode='easy')
+    Attack4 = BaseAttacker('agent_4', Team.BLUE_TEAM, env, mode='easy')
+    Deffend4 = BaseDefender('agent_4', Team.BLUE_TEAM, env, mode='easy')
+    Attack5 = BaseAttacker('agent_5', Team.BLUE_TEAM, env, mode='easy')
+    Deffend5 = BaseDefender('agent_5', Team.BLUE_TEAM, env, mode='easy')
+
     step = 0
     max_step = 2500
 
@@ -82,25 +89,33 @@ if __name__ == '__main__':
         for k in obs:
             new_obs[k] = env.agent_obs_normalizer.unnormalized(obs[k])
 
-        #Get learning agent action from policy
-        zero = policy_one.compute_single_action(obs['agent_0'])[0]
-        one = policy_two.compute_single_action(obs['agent_1'])[0]
-        #Compute Heuristic agent actions
-        two = H_one.compute_action(new_obs)
-        three = H_two.compute_action(new_obs)
-        
-        #Step the environment
-        #Opponents are BaseDefender & BaseAttacker
-        #obs, reward, term, trunc, info = env.step({'blue_0':zero, 'blue_1':one,'red_0':two,'red_1':three})
 
-        #Opponents Don't Move:
-        obs, reward, term, trunc, info = env.step({'agent_0':two,'agent_1':three, 'agent_2':-1, 'agent_3':-1})
+        zeroDeffend = Deffend0.compute_action(new_obs, info)
+        oneDeffend = Deffend1.compute_action(new_obs, info)
+        twoDeffend = Deffend2.compute_action(new_obs, info)
+        threeDeffend = Deffend3.compute_action(new_obs, info)
+        fourDeffend = Deffend4.compute_action(new_obs, info)
+        fiveDeffend = Deffend5.compute_action(new_obs, info)
+        zeroAttack = Attack0.compute_action(new_obs, info)
+        oneAttack = Attack1.compute_action(new_obs, info)
+        twoAttack = Attack2.compute_action(new_obs, info)
+        threeAttack = Attack3.compute_action(new_obs, info)
+        fourAttack = Attack4.compute_action(new_obs, info)
+        fiveAttack = Attack5.compute_action(new_obs, info)
+        print("Step: ")
+        print(step)
+        #Step the environment
+        if step >= max_step/2:
+            obs, reward, term, trunc, info = env.step({'agent_0':zeroDeffend,'agent_1':oneDeffend, 'agent_2':twoDeffend, 'agent_3':threeDeffend, 'agent_4':fourDeffend, 'agent_5':fiveDeffend})
+        else:
+            obs, reward, term, trunc, info = env.step({'agent_0':zeroAttack,'agent_1':oneAttack, 'agent_2':twoAttack, 'agent_3':threeAttack, 'agent_4':fourAttack, 'agent_5':fiveAttack})
         k =  list(term.keys())
+        
         if step >= max_step:
             break
         step += 1
         if term[k[0]] == True or trunc[k[0]]==True:
-            env.reset()
+            obs,info = env.reset()
     env.close()
 
 

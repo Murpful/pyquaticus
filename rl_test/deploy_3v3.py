@@ -50,7 +50,7 @@ import pyquaticus.utils.rewards as rew
 
 RENDER_MODE = 'human'
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Deploy a trained policy in a 2v2 PyQuaticus environment')
+    parser = argparse.ArgumentParser(description='Deploy a trained policy in a 3v3 PyQuaticus environment')
     parser.add_argument('policy_one', help='Please enter the path to the model you would like to load in Ex. ./ray_test/checkpoint_00001/policies/agent-0-policy')
     parser.add_argument('policy_two', help='Please enter the path to the model you would like to load in Ex. ./ray_test/checkpoint_00001/policies/agent-1-policy') 
     parser.add_argument('policy_three', help='Please enter the path to the model you would like to load in Ex. ./ray_test/checkpoint_00001/policies/agent-2-policy')
