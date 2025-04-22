@@ -179,6 +179,22 @@ def example_reward(
     tagging_cooldown: float
 ):
     return 0.0
+### Example Reward Funtion ###
+def coach(
+    agent_id: str,
+    team: Team,
+    agents: list,
+    agent_inds_of_team: dict,
+    state: dict,
+    prev_state: dict,
+    env_size: np.ndarray,
+    agent_radius: np.ndarray,
+    catch_radius: float,
+    scrimmage_coords: np.ndarray,
+    max_speeds: list,
+    tagging_cooldown: float
+):
+    return 0.0
 
 def caps_and_grabs(
     agent_id: str,
@@ -213,3 +229,182 @@ def caps_and_grabs(
     return reward
 
 ### Add Custom Reward Functions Here ###
+def control(
+    agent_id: str,
+    team: Team,
+    agents: list,
+    agent_inds_of_team: dict,
+    state: dict,
+    prev_state: dict,
+    env_size: np.ndarray,
+    agent_radius: np.ndarray,
+    catch_radius: float,
+    scrimmage_coords: np.ndarray,
+    max_speeds: list,
+    tagging_cooldown: float
+):
+    idx = agents.index(agent_id)
+    reward = 0.0
+
+    # 1) Penalty for leaving bounds
+    if not prev_state['agent_oob'][idx] and state['agent_oob'][idx]:
+        reward -= 1.0
+
+    # 2) Incentivize tagging an opponent
+    if state['agent_made_tag'][idx] is not None:
+        reward += 0.5
+
+    # 3) Punish being tagged
+    if not prev_state['agent_is_tagged'][idx] and state['agent_is_tagged'][idx]:
+        reward -= 0.5
+
+    # 4) Incentivize grabbing the flag
+    if not prev_state['agent_has_flag'][idx] and state['agent_has_flag'][idx]:
+        reward += 0.25
+
+    # 5) Incentivize *this agent’s* capture
+    team_idx     = team.value
+    prev_caps    = prev_state['captures'][team_idx]
+    caps_now     = state    ['captures'][team_idx]
+    had_flag_before = prev_state['agent_has_flag'][idx]
+    has_flag_now    = state    ['agent_has_flag'][idx]
+
+    if had_flag_before and not has_flag_now and caps_now > prev_caps:
+        reward += 1.0
+
+    return reward
+
+def balance(
+    agent_id: str,
+    team: Team,
+    agents: list,
+    agent_inds_of_team: dict,
+    state: dict,
+    prev_state: dict,
+    env_size: np.ndarray,
+    agent_radius: np.ndarray,
+    catch_radius: float,
+    scrimmage_coords: np.ndarray,
+    max_speeds: list,
+    tagging_cooldown: float
+):
+    """
+    - Individual penalties:
+        * –1.0 for going out of bounds
+        * –0.5 for being tagged
+    - Team successes (tag, grab, capture) are pooled and split equally.
+    """
+    idx       = agents.index(agent_id)
+    reward    = 0.0
+    team_idx  = team.value
+    teammates = agent_inds_of_team[team]
+    n_team    = len(teammates)
+
+    # 1) Individual penalty: left bounds this step?
+    if not prev_state['agent_oob'][idx] and state['agent_oob'][idx]:
+        reward -= 1.0
+
+    # 2) Individual penalty: got tagged this step?
+    if not prev_state['agent_is_tagged'][idx] and state['agent_is_tagged'][idx]:
+        reward -= 0.5
+
+    # 3) Team‐wide tagging reward
+    prev_team_tags = prev_state['tags'][team_idx]
+    curr_team_tags = state   ['tags'][team_idx]
+    delta_tags     = curr_team_tags - prev_team_tags
+    if delta_tags > 0:
+        reward += (0.5 * delta_tags) / n_team
+
+    # 4) Team‐wide flag‐grab reward
+    prev_team_grabs = prev_state['grabs'][team_idx]
+    curr_team_grabs = state   ['grabs'][team_idx]
+    delta_grabs     = curr_team_grabs - prev_team_grabs
+    if delta_grabs > 0:
+        reward += (0.25 * delta_grabs) / n_team
+
+    # 5) Team‐wide capture reward
+    prev_team_caps = prev_state['captures'][team_idx]
+    curr_team_caps = state   ['captures'][team_idx]
+    delta_caps     = curr_team_caps - prev_team_caps
+    if delta_caps > 0:
+        reward += (1.0 * delta_caps) / n_team
+
+    return reward
+
+def team(
+    agent_id: str,
+    team: Team,
+    agents: list,
+    agent_inds_of_team: dict,
+    state: dict,
+    prev_state: dict,
+    env_size: np.ndarray,
+    agent_radius: np.ndarray,
+    catch_radius: float,
+    scrimmage_coords: np.ndarray,
+    max_speeds: list,
+    tagging_cooldown: float
+):
+    """
+    - Individual penalties (same as before):
+        * –1.0 for leaving bounds
+        * –0.5 for being tagged
+    - Personal successes get a modest bonus; teammate successes get a larger bonus.
+    """
+    idx       = agents.index(agent_id)
+    reward    = 0.0
+    t_idx     = team.value
+
+    # --- 1) Individual penalties ---
+    if not prev_state['agent_oob'][idx] and state['agent_oob'][idx]:
+        reward -= 1.0
+    if not prev_state['agent_is_tagged'][idx] and state['agent_is_tagged'][idx]:
+        reward -= 0.5
+
+    # --- weight settings (tune these as you like) ---
+    SELF_TAG_W    = 0.5
+    TEAM_TAG_W    = 1.0
+
+    SELF_GRAB_W   = 0.25
+    TEAM_GRAB_W   = 0.5
+
+    SELF_CAP_W    = 1.0
+    TEAM_CAP_W    = 2.0
+
+    # --- 2) Tagging rewards ---
+    # total team tags this step
+    delta_tags = state['tags'][t_idx] - prev_state['tags'][t_idx]
+    # did I tag someone?
+    did_personal_tag = (state['agent_made_tag'][idx] is not None)
+    if did_personal_tag:
+        reward += SELF_TAG_W
+    # teammates’ tags = total minus mine
+    teammate_tags = max(0, delta_tags - (1 if did_personal_tag else 0))
+    if teammate_tags:
+        reward += TEAM_TAG_W * teammate_tags
+
+    # --- 3) Grab rewards ---
+    had_flag_before = prev_state['agent_has_flag'][idx]
+    has_flag_now    = state    ['agent_has_flag'][idx]
+    delta_grabs     = state['grabs'][t_idx] - prev_state['grabs'][t_idx]
+    did_personal_grab = (not had_flag_before and has_flag_now)
+    if did_personal_grab:
+        reward += SELF_GRAB_W
+    teammate_grabs = max(0, delta_grabs - (1 if did_personal_grab else 0))
+    if teammate_grabs:
+        reward += TEAM_GRAB_W * teammate_grabs
+
+    # --- 4) Capture rewards ---
+    prev_caps = prev_state['captures'][t_idx]
+    curr_caps = state    ['captures'][t_idx]
+    delta_caps = curr_caps - prev_caps
+
+    # detect personal capture (agent had flag, then dropped it home)
+    did_personal_cap = (had_flag_before and not has_flag_now and delta_caps > 0)
+    if did_personal_cap:
+        reward += SELF_CAP_W
+    teammate_caps = max(0, delta_caps - (1 if did_personal_cap else 0))
+    if teammate_caps:
+        reward += TEAM_CAP_W * teammate_caps
+
+    return reward

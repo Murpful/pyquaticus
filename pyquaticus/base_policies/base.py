@@ -38,14 +38,32 @@ class BaseAgentPolicy:
         self,
         agent_id: str,
         team: Team,
-        env: PyQuaticusEnv,#Union[PyQuaticusEnv, PyQuaticusMoosBridge],
+        env: PyQuaticusEnv,  # or PyQuaticusMoosBridge
         suppress_numpy_warnings=True,
     ):
         self.id = agent_id
         self.idx = env.agents.index(agent_id)
-        self.obs_normalizer = env.agent_obs_normalizer
-        self.state_normalizer = env.global_state_normalizer
 
+        # Try to get the observation normalizer from the environment or its wrapper.
+        if hasattr(env, "agent_obs_normalizer"):
+            self.obs_normalizer = env.agent_obs_normalizer
+        elif hasattr(env, "env") and hasattr(env.env, "agent_obs_normalizer"):
+            self.obs_normalizer = env.env.agent_obs_normalizer
+        elif hasattr(env, "unwrapped") and hasattr(env.unwrapped, "agent_obs_normalizer"):
+            self.obs_normalizer = env.unwrapped.agent_obs_normalizer
+        else:
+            # As a fallback, try resetting the environment to initialize attributes.
+            obs, info = env.reset()
+            if hasattr(env, "agent_obs_normalizer"):
+                self.obs_normalizer = env.agent_obs_normalizer
+            elif hasattr(env, "env") and hasattr(env.env, "agent_obs_normalizer"):
+                self.obs_normalizer = env.env.agent_obs_normalizer
+            elif hasattr(env, "unwrapped") and hasattr(env.unwrapped, "agent_obs_normalizer"):
+                self.obs_normalizer = env.unwrapped.agent_obs_normalizer
+            else:
+                raise AttributeError("Environment does not have an agent_obs_normalizer attribute.")
+
+        self.state_normalizer = env.global_state_normalizer
         self.walls = env._walls
 
         if isinstance(team, str):
@@ -57,7 +75,7 @@ class BaseAgentPolicy:
                 raise ValueError(f"Got unknown team: {team}")
         self.team = team
 
-        # Make sure own id is not in teammate_ids
+        # Determine teammate and opponent indices based on team membership.
         agents_per_team = env.team_size
         if team == Team.BLUE_TEAM:
             self.teammate_idxs = [i for i in range(agents_per_team) if i != self.idx]
@@ -81,6 +99,7 @@ class BaseAgentPolicy:
 
         if suppress_numpy_warnings:
             np.seterr(all="ignore")
+
 
     def compute_action(self, obs, info) -> Any:
         """

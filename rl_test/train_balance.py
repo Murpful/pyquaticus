@@ -34,7 +34,7 @@ import pyquaticus.utils.rewards as rew
 from pyquaticus.base_policies.base_policies import DefendGen, AttackGen
 from pyquaticus.config import config_dict_std
 import logging
-class CoachPolicy(Policy):
+class RandPolicy(Policy):
     """
     Example wrapper for training against a random policy.
 
@@ -68,9 +68,10 @@ class CoachPolicy(Policy):
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Train a coach for a simple 3v3 enviroment (1v1 coaches)')
+    parser = argparse.ArgumentParser(description='Train a 3v3 policy in a 3v3 PyQuaticus environment')
     parser.add_argument('--render', help='Enable rendering', action='store_true')
-    reward_config = {'agent_0':rew.coach, 'agent_1':rew.coach} # Example Reward Config
+    reward_config = {'agent_0':rew.balance, 'agent_1':rew.balance, 'agent_2':rew.balance, 'agent_3':None, 'agent_4':None, 'agent_5':None} # Example Reward Config
+    #Competitors: reward_config should be updated to reflect how you want to reward your learning agent
     
     args = parser.parse_args()
     logging.basicConfig(level=logging.ERROR)
@@ -78,7 +79,7 @@ if __name__ == '__main__':
     RENDER_MODE = 'human' if args.render else None #set to 'human' if you want rendered output
     
     config_dict = config_dict_std
-    config_dict['sim_speedup_factor'] = 4
+    config_dict['sim_speedup_factor'] = 10
     config_dict['max_score'] = 3
     config_dict['max_time']=240
     config_dict['tagging_cooldown'] = 60
@@ -94,9 +95,14 @@ if __name__ == '__main__':
             return "agent-0-policy"
         if agent_id == 'agent_1':
             return "agent-1-policy"
+        if agent_id == 'agent_2':
+            return "agent-2-policy"
+        return "random"
     
     policies = {'agent-0-policy':(None, obs_space, act_space, {}), 
-                'agent-1-policy':(None, obs_space, act_space, {})}
+                'agent-1-policy':(None, obs_space, act_space, {}),
+                'agent-2-policy':(None, obs_space, act_space, {}),
+                'random':(RandPolicy, obs_space, act_space, {"no_checkpoint": True})}
                 #Examples of Heuristic Opponents in Rllib Training (See two lines below)
                 #'easy-defend-policy': (DefendGen(2, Team.RED_TEAM, 'easy', 2, env.par_env.agent_obs_normalizer), obs_space, act_space, {"no_checkpoint": True})}#,
                 #'easy-attack-policy': (AttackGen(3, Team.RED_TEAM, 'easy', 2, env.par_env.agent_obs_normalizer), obs_space, act_space, {})}
@@ -104,7 +110,7 @@ if __name__ == '__main__':
     #Not using the Alpha Rllib (api_stack False) 
     ppo_config = PPOConfig().api_stack(enable_rl_module_and_learner=False, enable_env_runner_and_connector_v2=False).environment(env='pyquaticus').env_runners(num_env_runners=1, num_cpus_per_env_runner=1)
     #If your system allows changing the number of rollouts can significantly reduce training times (num_rollout_workers=15)
-    ppo_config.multi_agent(policies=policies, policy_mapping_fn=policy_mapping_fn, policies_to_train=["agent-0-policy", "agent-1-policy"],)
+    ppo_config.multi_agent(policies=policies, policy_mapping_fn=policy_mapping_fn, policies_to_train=["agent-0-policy", "agent-1-policy", "agent-2-policy"],)
     algo = ppo_config.build_algo()
     start = 0
     end = 0
@@ -116,5 +122,5 @@ if __name__ == '__main__':
         print("End Loop: ", end-start)
         if np.mod(i, 500) == 0:
             print("Saving Checkpoint: ", i)
-            chkpt_file = algo.save('./ray_test/iter_'+str(i)+'/')
+            chkpt_file = algo.save('./ray_test/balance/iter_'+str(i)+'/')
     
