@@ -108,7 +108,7 @@ if __name__ == '__main__':
                 #'easy-attack-policy': (AttackGen(3, Team.RED_TEAM, 'easy', 2, env.par_env.agent_obs_normalizer), obs_space, act_space, {})}
     env.close()
     #Not using the Alpha Rllib (api_stack False) 
-    ppo_config = PPOConfig().api_stack(enable_rl_module_and_learner=False, enable_env_runner_and_connector_v2=False).environment(env='pyquaticus').env_runners(num_env_runners=5, num_cpus_per_env_runner=1)
+    ppo_config = PPOConfig().api_stack(enable_rl_module_and_learner=False, enable_env_runner_and_connector_v2=False).environment(env='pyquaticus').env_runners(num_env_runners=50, num_cpus_per_env_runner=2)
     #If your system allows changing the number of rollouts can significantly reduce training times (num_rollout_workers=15)
     ppo_config.multi_agent(policies=policies, policy_mapping_fn=policy_mapping_fn, policies_to_train=["agent-0-policy", "agent-1-policy", "agent-2-policy"],)
         # Apply optimized training settings
@@ -124,6 +124,8 @@ if __name__ == '__main__':
     ppo_config.train_batch_size = 64000
     ppo_config.sgd_minibatch_size = 4096
     ppo_config.num_sgd_iter = 30
+    ppo_config.env_runners(sample_timeout_s=120)  # default is 60
+    ppo_config.rollouts(num_rollout_workers=10)  # Parallelism = faster sample collection
     algo = ppo_config.build_algo()
     start = 0
     end = 0
