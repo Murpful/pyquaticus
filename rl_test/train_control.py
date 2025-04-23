@@ -125,7 +125,6 @@ if __name__ == '__main__':
     ppo_config.sgd_minibatch_size = 4096
     ppo_config.num_sgd_iter = 30
     ppo_config.env_runners(sample_timeout_s=120)  # default is 60
-    ppo_config.rollouts(num_rollout_workers=10)  # Parallelism = faster sample collection
     algo = ppo_config.build_algo()
     start = 0
     end = 0
