@@ -137,5 +137,5 @@ if __name__ == '__main__':
         print("End Loop: ", end-start)
         if np.mod(i, 5) == 0:
             print("Saving Checkpoint: ", i)
-            chkpt_file = algo.save('./ray_test/controla/iter_'+str(i)+'/')
+            chkpt_file = algo.save('./ray_test/controlupdated/iter_'+str(i)+'/')
     
