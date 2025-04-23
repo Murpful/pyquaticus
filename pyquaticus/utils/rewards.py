@@ -408,3 +408,189 @@ def team(
         reward += TEAM_CAP_W * teammate_caps
 
     return reward
+def controla(
+    agent_id: str,
+    team: Team,
+    agents: list,
+    agent_inds_of_team: dict,
+    state: dict,
+    prev_state: dict,
+    env_size: np.ndarray,
+    agent_radius: np.ndarray,
+    catch_radius: float,
+    scrimmage_coords: np.ndarray,
+    max_speeds: list,
+    tagging_cooldown: float
+):
+    idx = agents.index(agent_id)
+    reward = 0.0
+
+    if not prev_state['agent_oob'][idx] and state['agent_oob'][idx]:
+        reward -= 1.0
+
+    if state['agent_made_tag'][idx] is not None:
+        reward += 0.5
+
+    if not prev_state['agent_is_tagged'][idx] and state['agent_is_tagged'][idx]:
+        reward -= 0.5
+
+    if not prev_state['agent_has_flag'][idx] and state['agent_has_flag'][idx]:
+        reward += 0.25
+
+    team_idx = team.value
+    prev_caps = prev_state['captures'][team_idx]
+    caps_now = state['captures'][team_idx]
+    had_flag_before = prev_state['agent_has_flag'][idx]
+    has_flag_now = state['agent_has_flag'][idx]
+
+    if had_flag_before and not has_flag_now and caps_now > prev_caps:
+        reward += 1.0
+
+    # Movement incentive logic
+    curr_pos = np.array(state['agent_position'][idx])
+    prev_pos = np.array(state['prev_agent_position'][idx])
+    direction_vector = curr_pos - prev_pos
+
+    opponent_flag_pos = state['flag_home'][1 - team_idx]  # enemy flag
+    home_pos = state['flag_home'][team_idx]
+
+    if not state['agent_has_flag'][idx]:
+        to_flag_vec = np.array(opponent_flag_pos) - prev_pos
+        if np.linalg.norm(to_flag_vec) > 0:
+            direction_alignment = np.dot(direction_vector, to_flag_vec) / (np.linalg.norm(direction_vector) * np.linalg.norm(to_flag_vec) + 1e-6)
+            reward += 0.001 * direction_alignment
+    else:
+        to_home_vec = np.array(home_pos) - prev_pos
+        if np.linalg.norm(to_home_vec) > 0:
+            direction_alignment = np.dot(direction_vector, to_home_vec) / (np.linalg.norm(direction_vector) * np.linalg.norm(to_home_vec) + 1e-6)
+            reward += 0.001 * direction_alignment
+
+    return reward
+
+def balancea(
+    agent_id: str,
+    team: Team,
+    agents: list,
+    agent_inds_of_team: dict,
+    state: dict,
+    prev_state: dict,
+    env_size: np.ndarray,
+    agent_radius: np.ndarray,
+    catch_radius: float,
+    scrimmage_coords: np.ndarray,
+    max_speeds: list,
+    tagging_cooldown: float
+):
+    idx = agents.index(agent_id)
+    reward = 0.0
+    team_idx = team.value
+    teammates = agent_inds_of_team[team]
+    n_team = len(teammates)
+
+    if not prev_state['agent_oob'][idx] and state['agent_oob'][idx]:
+        reward -= 1.0
+
+    if not prev_state['agent_is_tagged'][idx] and state['agent_is_tagged'][idx]:
+        reward -= 0.5
+
+    delta_tags = state['tags'][team_idx] - prev_state['tags'][team_idx]
+    did_personal_tag = (state['agent_made_tag'][idx] is not None)
+    if delta_tags > 0:
+        if did_personal_tag:
+            reward += 0.5
+        else:
+            reward += 0.5 / (n_team - 1)
+
+    delta_grabs = state['grabs'][team_idx] - prev_state['grabs'][team_idx]
+    had_flag_before = prev_state['agent_has_flag'][idx]
+    has_flag_now = state['agent_has_flag'][idx]
+    did_personal_grab = (not had_flag_before and has_flag_now)
+    if delta_grabs > 0:
+        if did_personal_grab:
+            reward += 0.25
+        else:
+            reward += 0.25 / (n_team - 1)
+
+    delta_caps = state['captures'][team_idx] - prev_state['captures'][team_idx]
+    did_personal_cap = (had_flag_before and not has_flag_now and delta_caps > 0)
+    if delta_caps > 0:
+        if did_personal_cap:
+            reward += 1.0 / 2
+        else:
+            reward += 1.0 / 2 / (n_team - 1)
+
+    curr_pos = np.array(state['agent_position'][idx])
+    prev_pos = np.array(state['prev_agent_position'][idx])
+    direction_vector = curr_pos - prev_pos
+
+    opponent_flag_pos = state['flag_home'][1 - team_idx]
+    home_pos = state['flag_home'][team_idx]
+
+    if not state['agent_has_flag'][idx]:
+        to_flag_vec = np.array(opponent_flag_pos) - prev_pos
+        if np.linalg.norm(to_flag_vec) > 0:
+            direction_alignment = np.dot(direction_vector, to_flag_vec) / (np.linalg.norm(direction_vector) * np.linalg.norm(to_flag_vec) + 1e-6)
+            reward += 0.001 * direction_alignment
+    else:
+        to_home_vec = np.array(home_pos) - prev_pos
+        if np.linalg.norm(to_home_vec) > 0:
+            direction_alignment = np.dot(direction_vector, to_home_vec) / (np.linalg.norm(direction_vector) * np.linalg.norm(to_home_vec) + 1e-6)
+            reward += 0.001 * direction_alignment
+
+    return reward
+
+def teama(
+    agent_id: str,
+    team: Team,
+    agents: list,
+    agent_inds_of_team: dict,
+    state: dict,
+    prev_state: dict,
+    env_size: np.ndarray,
+    agent_radius: np.ndarray,
+    catch_radius: float,
+    scrimmage_coords: np.ndarray,
+    max_speeds: list,
+    tagging_cooldown: float
+):
+    idx = agents.index(agent_id)
+    reward = 0.0
+    t_idx = team.value
+    n_team = len(agent_inds_of_team[team])
+
+    if not prev_state['agent_oob'][idx] and state['agent_oob'][idx]:
+        reward -= 1.0
+    if not prev_state['agent_is_tagged'][idx] and state['agent_is_tagged'][idx]:
+        reward -= 0.5
+
+    delta_tags = state['tags'][t_idx] - prev_state['tags'][t_idx]
+    if delta_tags > 0:
+        reward += (0.5 * delta_tags) / n_team
+
+    delta_grabs = state['grabs'][t_idx] - prev_state['grabs'][t_idx]
+    if delta_grabs > 0:
+        reward += (0.25 * delta_grabs) / n_team
+
+    delta_caps = state['captures'][t_idx] - prev_state['captures'][t_idx]
+    if delta_caps > 0:
+        reward += (1.0 * delta_caps) / n_team
+
+    curr_pos = np.array(state['agent_position'][idx])
+    prev_pos = np.array(state['prev_agent_position'][idx])
+    direction_vector = curr_pos - prev_pos
+
+    opponent_flag_pos = state['flag_home'][1 - t_idx]
+    home_pos = state['flag_home'][t_idx]
+
+    if not state['agent_has_flag'][idx]:
+        to_flag_vec = np.array(opponent_flag_pos) - prev_pos
+        if np.linalg.norm(to_flag_vec) > 0:
+            direction_alignment = np.dot(direction_vector, to_flag_vec) / (np.linalg.norm(direction_vector) * np.linalg.norm(to_flag_vec) + 1e-6)
+            reward += 0.001 * direction_alignment
+    else:
+        to_home_vec = np.array(home_pos) - prev_pos
+        if np.linalg.norm(to_home_vec) > 0:
+            direction_alignment = np.dot(direction_vector, to_home_vec) / (np.linalg.norm(direction_vector) * np.linalg.norm(to_home_vec) + 1e-6)
+            reward += 0.001 * direction_alignment
+
+    return reward

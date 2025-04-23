@@ -70,7 +70,7 @@ class RandPolicy(Policy):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Train a 3v3 policy in a 3v3 PyQuaticus environment')
     parser.add_argument('--render', help='Enable rendering', action='store_true')
-    reward_config = {'agent_0':rew.balance, 'agent_1':rew.balance, 'agent_2':rew.balance, 'agent_3':None, 'agent_4':None, 'agent_5':None} # Example Reward Config
+    reward_config = {'agent_0':rew.balancea, 'agent_1':rew.balancea, 'agent_2':rew.balancea, 'agent_3':None, 'agent_4':None, 'agent_5':None} # Example Reward Config
     #Competitors: reward_config should be updated to reflect how you want to reward your learning agent
     
     args = parser.parse_args()
@@ -109,8 +109,22 @@ if __name__ == '__main__':
     env.close()
     #Not using the Alpha Rllib (api_stack False) 
     ppo_config = PPOConfig().api_stack(enable_rl_module_and_learner=False, enable_env_runner_and_connector_v2=False).environment(env='pyquaticus').env_runners(num_env_runners=5, num_cpus_per_env_runner=1)
-    #If your system allows changing the number of rollouts can significantly reduce training times (num_rollout_workers=15)
-    ppo_config.multi_agent(policies=policies, policy_mapping_fn=policy_mapping_fn, policies_to_train=["agent-0-policy", "agent-1-policy", "agent-2-policy"],)
+
+    # Apply optimized training settings
+    ppo_config = ppo_config.training(
+        gamma=0.995,
+        lambda_=0.97,
+        lr=5e-5,
+        clip_param=0.2,
+        entropy_coeff=0.003,
+        vf_loss_coeff=0.5,
+        use_gae=True,
+    )
+    ppo_config.train_batch_size = 64000
+    ppo_config.sgd_minibatch_size = 4096
+    ppo_config.num_sgd_iter = 30
+
+
     algo = ppo_config.build_algo()
     start = 0
     end = 0
@@ -120,7 +134,7 @@ if __name__ == '__main__':
         algo.train()
         end = time.time()
         print("End Loop: ", end-start)
-        if np.mod(i, 10) == 0:
+        if np.mod(i, 5) == 0:
             print("Saving Checkpoint: ", i)
             chkpt_file = algo.save('./ray_test/balance/iter_'+str(i)+'/')
     

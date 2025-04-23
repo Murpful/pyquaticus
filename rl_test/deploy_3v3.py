@@ -50,14 +50,14 @@ import pyquaticus.utils.rewards as rew
 
 RENDER_MODE = 'human'
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Deploy a trained policy in a 3v3 PyQuaticus environment')
+    parser = argparse.ArgumentParser(description='Deploy a trained policy in a 2v2 PyQuaticus environment')
     parser.add_argument('policy_one', help='Please enter the path to the model you would like to load in Ex. ./ray_test/checkpoint_00001/policies/agent-0-policy')
     parser.add_argument('policy_two', help='Please enter the path to the model you would like to load in Ex. ./ray_test/checkpoint_00001/policies/agent-1-policy') 
     parser.add_argument('policy_three', help='Please enter the path to the model you would like to load in Ex. ./ray_test/checkpoint_00001/policies/agent-2-policy')
-    reward_config = {'agent_0':rew.sparse, 'agent_1':rew.sparse, 'agent_2':rew.sparse}
+    reward_config = {}
     args = parser.parse_args()
     config_dict = config_dict_std
-    config_dict['sim_speedup_factor'] = 4
+    config_dict['sim_speedup_factor'] = 20
     config_dict['max_score'] = 3
     config_dict['max_time']=240
     config_dict['tagging_cooldown'] = 60
@@ -67,15 +67,23 @@ if __name__ == '__main__':
     #Create Environment
     env = pyquaticus_v0.PyQuaticusEnv(config_dict=config_dict,render_mode='human',reward_config=reward_config, team_size=3)
     
-    obs,_ = env.reset()
-    
+    obs,info = env.reset(return_info=True)
+    Attack0 = BaseAttacker('agent_3', Team.RED_TEAM, env, mode='easy')
+    Deffend0 = BaseDefender('agent_3', Team.RED_TEAM, env, mode='easy')
+    Attack1 = BaseAttacker('agent_4', Team.RED_TEAM, env, mode='easy')
+    Deffend1 = BaseDefender('agent_4', Team.RED_TEAM, env, mode='easy')
+    Attack2 = BaseAttacker('agent_5', Team.RED_TEAM, env, mode='easy')
+    Deffend2 = BaseDefender('agent_5', Team.RED_TEAM, env, mode='easy')
     #Ex. Load in Heurisitc
     #H_one = BaseDefender('agent_0', Team.RED_TEAM, mode='easy')
     #H_two = BaseAttacker('agent_1', Team.RED_TEAM, mode='easy')
     #Load in learned policies
-    policy_one = Policy.from_checkpoint(os.path.abspath(args.policy_one))
-    policy_two = Policy.from_checkpoint(os.path.abspath(args.policy_two))
-    policy_three = Policy.from_checkpoint(os.path.abspath(args.policy_three))
+    policy_one_dict = Policy.from_checkpoint(os.path.abspath(args.policy_one))
+    policy_two_dict = Policy.from_checkpoint(os.path.abspath(args.policy_two))
+    policy_three_dict = Policy.from_checkpoint(os.path.abspath(args.policy_three))
+    policy_one = policy_one_dict['agent-0-policy']
+    policy_two = policy_two_dict['agent-1-policy']
+    policy_three = policy_three_dict['agent-2-policy']
     step = 0
     max_step = 2500
 
@@ -89,13 +97,16 @@ if __name__ == '__main__':
         zero = policy_one.compute_single_action(obs['agent_0'])[0]
         one = policy_two.compute_single_action(obs['agent_1'])[0]
         two = policy_three.compute_single_action(obs['agent_2'])[0]
-        #Ex. Compute Heuristic agent actions
+        zeroDeffend = Deffend0.compute_action(new_obs, info)
+        oneAttack = Attack1.compute_action(new_obs, info)
+        twoAttack = Attack2.compute_action(new_obs, info)
+        #Ex. Compute Heuristic agent actons
         #two = H_one.compute_action(new_obs)
         #three = H_two.compute_action(new_obs)
         
         #Step the environment
         #Opponents Don't Move:
-        obs, reward, term, trunc, info = env.step({'agent_0':zero,'agent_1':one, 'agent_2':two, 'agent_3':-1, 'agent_4':-1, 'agent_5':-1})
+        obs, reward, term, trunc, info = env.step({'agent_0':zero,'agent_1':one, 'agent_2':two, 'agent_3':zeroDeffend, 'agent_4':oneAttack, 'agent_5':twoAttack})
         k =  list(term.keys())
         if step >= max_step:
             break
@@ -103,5 +114,3 @@ if __name__ == '__main__':
         if term[k[0]] == True or trunc[k[0]]==True:
             obs,_ = env.reset()
     env.close()
-
-
