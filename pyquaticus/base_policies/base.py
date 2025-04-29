@@ -126,6 +126,7 @@ class BaseAgentPolicy:
             info: info from gym
         """
 
+
         global_state = info[self.id]
 
         # Unnormalize state, if necessary

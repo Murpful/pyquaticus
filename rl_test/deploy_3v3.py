@@ -59,7 +59,7 @@ if __name__ == '__main__':
     config_dict = config_dict_std
     config_dict['sim_speedup_factor'] = 20
     config_dict['max_score'] = 3
-    config_dict['max_time']=240
+    config_dict['max_time']=500
     config_dict['tagging_cooldown'] = 60
     config_dict['tag_on_oob']=True
 
