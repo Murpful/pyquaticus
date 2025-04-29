@@ -425,27 +425,46 @@ def controla(
     idx = agents.index(agent_id)
     reward = 0.0
 
+    # --- Scaled constants ---
+    PENALTY_OOB = -1.0
+    PENALTY_TAGGED = -0.5
+
+    REWARD_TAG = 0.5
+    REWARD_GRAB = 0.3
+    REWARD_CAP = 1.0
+
+    MOVE_REWARD_NO_FLAG = 0.01
+    MOVE_REWARD_WITH_FLAG = 0.02
+
+    TIME_STEP_PENALTY = -0.01
+
+    # --- 1) Penalty for leaving bounds ---
     if not prev_state['agent_oob'][idx] and state['agent_oob'][idx]:
-        reward -= 10.0
+        reward += PENALTY_OOB
 
+    # --- 2) Reward for tagging an opponent ---
     if state['agent_made_tag'][idx] is not None:
-        reward += 1.0
+        reward += REWARD_TAG
 
+    # --- 3) Penalty for being tagged ---
     if not prev_state['agent_is_tagged'][idx] and state['agent_is_tagged'][idx]:
-        reward -= 1.0
+        reward += PENALTY_TAGGED
 
+    # --- 4) Reward for grabbing the flag ---
     if not prev_state['agent_has_flag'][idx] and state['agent_has_flag'][idx]:
-        reward += 10.0
+        reward += REWARD_GRAB
 
+    # --- 5) Reward for personal capture (if carried flag and now captured) ---
     team_idx = team.value
     prev_caps = prev_state['captures'][team_idx]
-    caps_now = state['captures'][team_idx]
+    curr_caps = state['captures'][team_idx]
     had_flag_before = prev_state['agent_has_flag'][idx]
     has_flag_now = state['agent_has_flag'][idx]
 
-    if had_flag_before and not has_flag_now and caps_now > prev_caps:
-        reward += 20.0
+    if had_flag_before and not has_flag_now and curr_caps > prev_caps:
+        reward += REWARD_CAP
 
+    # --- 6) Movement incentives ---
     curr_pos = np.array(state['agent_position'][idx])
     prev_pos = np.array(state['prev_agent_position'][idx])
 
@@ -453,17 +472,21 @@ def controla(
     home_pos = np.array(state['flag_home'][team_idx])
 
     if not state['agent_has_flag'][idx]:
-        # Moving toward enemy flag
+        # Move toward enemy flag
         d_prev = np.linalg.norm(opponent_flag_pos - prev_pos)
         d_curr = np.linalg.norm(opponent_flag_pos - curr_pos)
-        reward += 0.02 * (d_prev - d_curr)
+        reward += MOVE_REWARD_NO_FLAG * (d_prev - d_curr)
     else:
-        # Moving toward home
+        # Move toward home
         d_prev = np.linalg.norm(home_pos - prev_pos)
         d_curr = np.linalg.norm(home_pos - curr_pos)
-        reward += 0.04 * (d_prev - d_curr)
+        reward += MOVE_REWARD_WITH_FLAG * (d_prev - d_curr)
+
+    # --- 7) Small penalty for every step (optional) ---
+    reward += TIME_STEP_PENALTY
 
     return reward
+
 
 
 def balancea(
@@ -486,38 +509,64 @@ def balancea(
     teammates = agent_inds_of_team[team]
     n_team = len(teammates)
 
+    # --- Scaled constants ---
+    PENALTY_OOB = -1.0
+    PENALTY_TAGGED = -0.5
+
+    SELF_TAG_REWARD = 0.5
+    TEAM_TAG_REWARD = 0.25
+
+    SELF_GRAB_REWARD = 0.5
+    TEAM_GRAB_REWARD = 0.25
+
+    SELF_CAP_REWARD = 1.0
+    TEAM_CAP_REWARD = 0.5
+
+    MOVE_REWARD_NO_FLAG = 0.01
+    MOVE_REWARD_WITH_FLAG = 0.02
+
+    TIME_STEP_PENALTY = -0.01
+
+    # --- 1) Individual penalties ---
     if not prev_state['agent_oob'][idx] and state['agent_oob'][idx]:
-        reward -= 10.0
+        reward += PENALTY_OOB
 
     if not prev_state['agent_is_tagged'][idx] and state['agent_is_tagged'][idx]:
-        reward -= 1.0
+        reward += PENALTY_TAGGED
 
+    # --- 2) Tags ---
     delta_tags = state['tags'][team_idx] - prev_state['tags'][team_idx]
     did_personal_tag = (state['agent_made_tag'][idx] is not None)
+
     if delta_tags > 0:
         if did_personal_tag:
-            reward += 1.0
+            reward += SELF_TAG_REWARD
         else:
-            reward += 1.0 / (n_team - 1)
+            reward += TEAM_TAG_REWARD
 
+    # --- 3) Flag grabs ---
     delta_grabs = state['grabs'][team_idx] - prev_state['grabs'][team_idx]
     had_flag_before = prev_state['agent_has_flag'][idx]
     has_flag_now = state['agent_has_flag'][idx]
     did_personal_grab = (not had_flag_before and has_flag_now)
+
     if delta_grabs > 0:
         if did_personal_grab:
-            reward += 10.0
+            reward += SELF_GRAB_REWARD
         else:
-            reward += 10.0 / (n_team - 1)
+            reward += TEAM_GRAB_REWARD
 
+    # --- 4) Captures ---
     delta_caps = state['captures'][team_idx] - prev_state['captures'][team_idx]
     did_personal_cap = (had_flag_before and not has_flag_now and delta_caps > 0)
+
     if delta_caps > 0:
         if did_personal_cap:
-            reward += 20.0
+            reward += SELF_CAP_REWARD
         else:
-            reward += 20.0 / (n_team - 1)
+            reward += TEAM_CAP_REWARD
 
+    # --- 5) Movement rewards ---
     curr_pos = np.array(state['agent_position'][idx])
     prev_pos = np.array(state['prev_agent_position'][idx])
 
@@ -527,13 +576,18 @@ def balancea(
     if not state['agent_has_flag'][idx]:
         d_prev = np.linalg.norm(opponent_flag_pos - prev_pos)
         d_curr = np.linalg.norm(opponent_flag_pos - curr_pos)
-        reward += 0.02 * (d_prev - d_curr)
+        reward += MOVE_REWARD_NO_FLAG * (d_prev - d_curr)
     else:
         d_prev = np.linalg.norm(home_pos - prev_pos)
         d_curr = np.linalg.norm(home_pos - curr_pos)
-        reward += 0.04 * (d_prev - d_curr)
+        reward += MOVE_REWARD_WITH_FLAG * (d_prev - d_curr)
+
+    # --- 6) Time penalty ---
+    reward += TIME_STEP_PENALTY
 
     return reward
+
+
 
 
 def teama(
@@ -553,26 +607,45 @@ def teama(
     idx = agents.index(agent_id)
     reward = 0.0
     t_idx = team.value
-    n_team = len(agent_inds_of_team[team])
+    teammates = agent_inds_of_team[team]
+    n_team = len(teammates)
 
+    # --- Scaled constants ---
+    PENALTY_OOB = -1.0
+    PENALTY_TAGGED = -0.5
+
+    TEAM_TAG_REWARD = 0.3
+    TEAM_GRAB_REWARD = 0.5
+    TEAM_CAP_REWARD = 1.0
+
+    MOVE_REWARD_NO_FLAG = 0.01
+    MOVE_REWARD_WITH_FLAG = 0.02
+
+    TIME_STEP_PENALTY = -0.01
+
+    # --- 1) Individual penalties ---
     if not prev_state['agent_oob'][idx] and state['agent_oob'][idx]:
-        reward -= 10.0
+        reward += PENALTY_OOB
 
     if not prev_state['agent_is_tagged'][idx] and state['agent_is_tagged'][idx]:
-        reward -= 1.0
+        reward += PENALTY_TAGGED
 
+    # --- 2) Tags ---
     delta_tags = state['tags'][t_idx] - prev_state['tags'][t_idx]
     if delta_tags > 0:
-        reward += (1.0 * delta_tags) / n_team
+        reward += (TEAM_TAG_REWARD * delta_tags) / n_team
 
+    # --- 3) Flag grabs ---
     delta_grabs = state['grabs'][t_idx] - prev_state['grabs'][t_idx]
     if delta_grabs > 0:
-        reward += (10.0 * delta_grabs) / n_team
+        reward += (TEAM_GRAB_REWARD * delta_grabs) / n_team
 
+    # --- 4) Captures ---
     delta_caps = state['captures'][t_idx] - prev_state['captures'][t_idx]
     if delta_caps > 0:
-        reward += (20.0 * delta_caps) / n_team
+        reward += (TEAM_CAP_REWARD * delta_caps) / n_team
 
+    # --- 5) Movement rewards ---
     curr_pos = np.array(state['agent_position'][idx])
     prev_pos = np.array(state['prev_agent_position'][idx])
 
@@ -582,11 +655,14 @@ def teama(
     if not state['agent_has_flag'][idx]:
         d_prev = np.linalg.norm(opponent_flag_pos - prev_pos)
         d_curr = np.linalg.norm(opponent_flag_pos - curr_pos)
-        reward += 0.02 * (d_prev - d_curr)
+        reward += MOVE_REWARD_NO_FLAG * (d_prev - d_curr)
     else:
         d_prev = np.linalg.norm(home_pos - prev_pos)
         d_curr = np.linalg.norm(home_pos - curr_pos)
-        reward += 0.04 * (d_prev - d_curr)
+        reward += MOVE_REWARD_WITH_FLAG * (d_prev - d_curr)
+
+    # --- 6) Time penalty ---
+    reward += TIME_STEP_PENALTY
 
     return reward
 
